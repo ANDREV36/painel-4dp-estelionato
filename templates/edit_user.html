@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="pt-br">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Editar usuário — 4º DP</title><link rel="stylesheet" href="/static/style.css"></head>
+<body>
+<header><b>4º DP — Editar usuário</b><a href="/master">Voltar ao Master</a></header>
+<main>
+<section class="card" style="max-width:650px;margin:auto">
+<h2>Alterar dados do usuário</h2>
+{% for cat,msg in get_flashed_messages(with_categories=true) %}<div class="alert {{cat}}">{{msg}}</div>{% endfor %}
+<form method="post" class="grid">
+  <div><label>Nome</label><input name="name" value="{{user.name}}" required></div>
+  <div><label>Usuário de acesso</label><input name="username" value="{{user.username}}" required></div>
+  <div><label>Nova senha <small>(deixe em branco para manter a atual)</small></label><input type="password" name="password" minlength="6"></div>
+  <div><button class="btn">Salvar alterações</button></div>
+</form>
+<p style="margin-top:16px"><small>O histórico de procedimentos do usuário não é alterado. Apenas os dados de acesso são atualizados.</small></p>
+</section>
+</main>
+</body></html>
