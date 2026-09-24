@@ -1,0 +1,51 @@
+<!doctype html><html lang="pt-br"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Usuário</title><link rel="stylesheet" href="/static/style.css"><body><header><b>4º DP — Estelionato</b><span>{{session.user_name}} · <a href="/logout">Sair</a></span></header><main>
+<section class="card daily-card">
+  <div class="daily-head"><div><h2>Meta de hoje</h2><div class="daily-date">{{work_date}}</div></div><div class="daily-number">{% if daily_goal.status in ['folga','operacao'] %}0<small> procedimentos</small>{% elif daily_goal.assigned %}{{daily_goal.goal}}<small> procedimentos</small>{% else %}—<small> não definida</small>{% endif %}</div></div>
+  {% if daily_goal.status in ['folga','operacao'] %}
+    <div class="day-message off">{% if daily_goal.status == 'folga' %}FOLGA{% else %}OPERAÇÃO{% endif %} — sua meta de hoje está zerada.</div>
+  {% elif daily_goal.assigned %}
+    <div class="day-message">SUA META É <b>{{daily_goal.goal}} PROCEDIMENTOS</b> POR DIA DE TRABALHO.</div>
+    <div class="daily-progress"><div style="width:{{ ([100, (daily_production / daily_goal.goal * 100 if daily_goal.goal else 0)]|min) }}%"></div></div>
+    <div class="daily-count"><b>{{daily_production}}</b> de <b>{{daily_goal.goal}}</b> procedimentos hoje</div>
+  {% else %}
+    <div class="day-message pending">Sua meta de hoje ainda não foi definida pelo Master.</div>
+  {% endif %}
+  <div class="work-status">
+    <span class="work-status-dot"></span><b>TRABALHANDO — status ativo</b>
+    <span class="muted status-help">O status padrão é trabalhando. Só marque OPERAÇÃO ou FOLGA quando for o caso; ao marcar, a meta do dia fica zerada.</span>
+  </div>
+  <form method="post" action="/daily-status" class="day-status-form" id="dayStatusForm">
+    <input type="hidden" name="status" id="dayStatus" value="{{ daily_goal.status if daily_goal.status in ['folga','operacao'] else 'trabalhando' }}">
+    <label class="status-option operation"><input type="checkbox" id="checkOperacao" {% if daily_goal.status == 'operacao' %}checked{% endif %}> <span>✓ OPERAÇÃO</span></label>
+    <label class="status-option folga"><input type="checkbox" id="checkFolga" {% if daily_goal.status == 'folga' %}checked{% endif %}> <span>✓ FOLGA</span></label>
+    {% if daily_goal.status in ['folga','operacao'] %}<button type="button" class="status-reset" id="resetWorking">Voltar para TRABALHANDO</button>{% endif %}
+  </form>
+</section>
+<section class="card"><h2>Novo lançamento</h2>{% for cat,msg in get_flashed_messages(with_categories=true) %}<div class="alert {{cat}}">{{msg}}</div>{% endfor %}
+<form method="post" action="/records" class="grid">
+<div><label>RO</label><input id="rio" name="rio" inputmode="numeric" autocomplete="off" placeholder="000-00000/0000" maxlength="14" required></div>
+<div><label>Ofício — Telefonia</label><input name="telephony" placeholder="Ex.: Telefônica"></div>
+<div><label>Ofício — Banco</label><input name="bank" placeholder="Ex.: Itaú"></div>
+<div class="full"><label>Outros ofícios — para onde foi?</label><input name="other_offices" placeholder="Ex.: Google, Meta, empresa, instituição etc."></div>
+<div class="full"><button class="btn">Salvar procedimento</button></div></form></section>
+<section class="card"><h2>Meus lançamentos</h2><div class="tablewrap"><table><tr><th>Data/hora</th><th>RO</th><th>Informado</th><th>Telefonia</th><th>Retorno</th><th>Banco</th><th>Retorno</th><th>Outros</th><th>Retorno</th></tr>{% for r in rows %}<tr><td>{{r.created_at}}</td><td>{{r.rio}}</td><td>{% if r.informed %}<form method="post" action="/records/{{r.id}}/toggle-informed"><button class="informed-table checked" title="Informado em {{r.informed_at}}">✓</button><small class="informed-date">{{r.informed_at}}</small></form>{% else %}<form method="post" action="/records/{{r.id}}/toggle-informed"><button class="informed-table" title="Marcar como informado">✓</button></form>{% endif %}</td><td>{{r.telephony or '—'}}</td><td>{% if r.telephony %}<form method="post" action="/records/{{r.id}}/toggle-return/telephony"><button class="return-table {{'checked' if r.telephony_returned else ''}}" title="Marcar retorno">✓</button></form>{% else %}—{% endif %}</td><td>{{r.bank or '—'}}</td><td>{% if r.bank %}<form method="post" action="/records/{{r.id}}/toggle-return/bank"><button class="return-table {{'checked' if r.bank_returned else ''}}" title="Marcar retorno">✓</button></form>{% else %}—{% endif %}</td><td>{{r.other_offices or '—'}}</td><td>{% if r.other_offices %}<form method="post" action="/records/{{r.id}}/toggle-return/other"><button class="return-table {{'checked' if r.other_returned else ''}}" title="Marcar retorno">✓</button></form>{% else %}—{% endif %}</td></tr>{% else %}<tr><td colspan="9">Nenhum lançamento.</td></tr>{% endfor %}</table></div></section></main>
+<script>
+const dayForm = document.getElementById('dayStatusForm');
+const dayStatus = document.getElementById('dayStatus');
+const checkOperacao = document.getElementById('checkOperacao');
+const checkFolga = document.getElementById('checkFolga');
+function updateDayStatus(source){
+  if(source === checkOperacao && checkOperacao.checked){ checkFolga.checked=false; dayStatus.value='operacao'; }
+  else if(source === checkFolga && checkFolga.checked){ checkOperacao.checked=false; dayStatus.value='folga'; }
+  else { dayStatus.value='trabalhando'; }
+  dayForm.submit();
+}
+checkOperacao.addEventListener('change', ()=>updateDayStatus(checkOperacao));
+checkFolga.addEventListener('change', ()=>updateDayStatus(checkFolga));
+const resetWorking = document.getElementById('resetWorking');
+if(resetWorking){ resetWorking.addEventListener('click', ()=>{ dayStatus.value='trabalhando'; dayForm.submit(); }); }
+
+const roField = document.getElementById('rio');
+function formatRO(value) { let digits=value.replace(/\D/g,'').slice(0,12); if(digits.length>8)return digits.slice(0,3)+'-'+digits.slice(3,8)+'/'+digits.slice(8,12); if(digits.length>3)return digits.slice(0,3)+'-'+digits.slice(3,8); return digits; }
+roField.addEventListener('input',function(){this.value=formatRO(this.value)}); roField.addEventListener('paste',function(){setTimeout(()=>{this.value=formatRO(this.value)},0)});
+</script></body></html>
