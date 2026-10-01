@@ -117,11 +117,14 @@ def accumulated_for_user(user_id,through_date=None):
 @app.route("/dashboard")
 @user_required
 def user_dashboard():
- raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} ORDER BY r.created_at DESC",(session["user_id"],));rows=[dict(r,overdue=is_overdue(r)) for r in raw];today=local_date();gi=daily_goal_for(session["user_id"],today);prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(session["user_id"],today.isoformat()),True)["n"];acc=accumulated_for_user(session["user_id"]);sd=request.args.get("status_date") or today.isoformat()
+ raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} ORDER BY r.created_at DESC",(session["user_id"],));rows=[dict(r,overdue=is_overdue(r)) for r in raw];today=local_date();gi=daily_goal_for(session["user_id"],today);prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(session["user_id"],today.isoformat()),True)["n"];acc=accumulated_for_user(session["user_id"]);all_users=q("SELECT id,name,active FROM users ORDER BY name");team_daily=[]
+ for u in all_users:
+  ug=daily_goal_for(u["id"],today);uprod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],today.isoformat()),True)["n"];uacc=accumulated_for_user(u["id"]);team_daily.append({"id":u["id"],"name":u["name"],"active":u["active"],"goal":ug["goal"],"production":uprod,"status":ug["status"],"acc_goal":uacc["goal"],"acc_real":uacc["real"]})
+sd=request.args.get("status_date") or today.isoformat()
  try:so=date.fromisoformat(sd)
  except ValueError:so=today;sd=today.isoformat()
  ss=daily_goal_for(session["user_id"],so)
- return render_template("user_dashboard.html",rows=rows,daily_goal=gi,daily_production=prod,acc_goal=acc["goal"],acc_real=acc["real"],work_date=today.strftime("%d/%m/%Y"),status_date=sd,selected_status=ss,status_date_display=so.strftime("%d/%m/%Y"))
+ return render_template("user_dashboard.html",rows=rows,daily_goal=gi,daily_production=prod,acc_goal=acc["goal"],acc_real=acc["real"],work_date=today.strftime("%d/%m/%Y"),status_date=sd,selected_status=ss,status_date_display=so.strftime("%d/%m/%Y"),team_daily=team_daily)
 @app.route("/daily-status",methods=["POST"])
 @user_required
 def daily_status():
