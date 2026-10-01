@@ -196,6 +196,28 @@ def master_login():
 def logout():
     session.clear(); return redirect(url_for("login"))
 
+def is_overdue(record):
+    if int(record['informed'] or 0) or int(record['telephony_returned'] or 0) or int(record['bank_returned'] or 0) or int(record['other_returned'] or 0): return False
+    created=record['created_at']
+    if isinstance(created,str):
+        try: created=datetime.fromisoformat(created.replace('Z','+00:00'))
+        except ValueError:
+            try: created=datetime.strptime(created[:19],'%Y-%m-%d %H:%M:%S')
+            except ValueError: return False
+    if isinstance(created,datetime) and created.tzinfo: created=created.astimezone(TZ).replace(tzinfo=None)
+    return datetime.now().replace(microsecond=0)-created >= timedelta(days=15)
+
+def accumulated_for_user(user_id, through_date=None):
+    end=through_date or (local_date()-timedelta(days=1)); start=system_start_date()
+    if end<start: return {'goal':0,'real':0}
+    gr=q(f"SELECT work_date,status FROM daily_goals WHERE user_id={PH} AND work_date>={PH} AND work_date<={PH}",(user_id,start,end))
+    gm={str(x['work_date']):(x['status'] or 'trabalhando') for x in gr}
+    pr=q(f"SELECT date(created_at) work_date,COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)>={PH} AND date(created_at)<={PH} GROUP BY date(created_at)",(user_id,start.isoformat(),end.isoformat()))
+    pm={str(x['work_date']):int(x['n'] or 0) for x in pr}; goal=real=0; d=start
+    while d<=end:
+        if d.weekday()<5 and gm.get(d.isoformat(),'trabalhando') not in ('folga','operacao'): goal+=3
+        real+=pm.get(d.isoformat(),0); d+=timedelta(days=1)
+    return {'goal':goal,'real':real}
 @app.route("/dashboard")
 @user_required
 def user_dashboard():
