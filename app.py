@@ -138,9 +138,10 @@ def daily_status():
 @user_required
 def create_record():
  rio=request.form["rio"].strip();indicted_raw=request.form.get("indicted_count","").strip();tel=request.form.get("telephony","").strip();bank=request.form.get("bank","").strip();other=request.form.get("other_offices","").strip();tr=1 if request.form.get("telephony_returned")=="1" and tel else 0;br=1 if request.form.get("bank_returned")=="1" and bank else 0;orr=1 if request.form.get("other_returned")=="1" and other else 0
+ try:indicted_count=int(indicted_raw)
+ except ValueError:indicted_count=-1
  if not RO_RE.fullmatch(rio):flash("RO inválido. Use 000-00000/AAAA.","danger")
- elif not indicted_raw.isdigit() or int(indicted_raw) < 0:flash("Informe a quantidade de indiciados.","warning")
- else:indicted_count=int(indicted_raw)
+ elif indicted_count < 0:flash("Informe a quantidade de indiciados.","warning")
  elif tel not in ("Vivo","TIM","Claro"):flash("FAÇA CONTATO COM A VÍTIMA E IDENTIFIQUE O TELEFONE QUE FEZ CONTATO.","warning")
  elif not bank or not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿ]",bank):flash("IDENTIFIQUE COM A VITIMA, SOLICITE O COMPROVANTE PARA SABER PARA QUE BANCO O $ FOI TRASFERIDO","warning")
  else:
