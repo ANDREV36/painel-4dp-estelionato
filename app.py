@@ -117,14 +117,19 @@ def accumulated_for_user(user_id,through_date=None):
 @app.route("/dashboard")
 @user_required
 def user_dashboard():
- raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} ORDER BY r.created_at DESC",(session["user_id"],));rows=[dict(r,overdue=is_overdue(r)) for r in raw];today=local_date();gi=daily_goal_for(session["user_id"],today);prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(session["user_id"],today.isoformat()),True)["n"];acc=accumulated_for_user(session["user_id"]);all_users=q("SELECT id,name,active FROM users ORDER BY name");team_daily=[]
+ ro_filter=request.args.get("ro_filter","").strip()
+ if ro_filter:
+  raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} AND r.rio={PH} ORDER BY r.created_at DESC",(session["user_id"],ro_filter))
+ else:
+  raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC",(session["user_id"],))
+ rows=[dict(r,overdue=is_overdue(r)) for r in raw];today=local_date();gi=daily_goal_for(session["user_id"],today);prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(session["user_id"],today.isoformat()),True)["n"];acc=accumulated_for_user(session["user_id"]);all_users=q("SELECT id,name,active FROM users ORDER BY name");team_daily=[]
  for u in all_users:
   ug=daily_goal_for(u["id"],today);uprod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],today.isoformat()),True)["n"];uacc=accumulated_for_user(u["id"]);team_daily.append({"id":u["id"],"name":u["name"],"active":u["active"],"goal":ug["goal"],"production":uprod,"status":ug["status"],"acc_goal":uacc["goal"],"acc_real":uacc["real"]})
  sd=request.args.get("status_date") or today.isoformat()
  try:so=date.fromisoformat(sd)
  except ValueError:so=today;sd=today.isoformat()
  ss=daily_goal_for(session["user_id"],so)
- return render_template("user_dashboard.html",rows=rows,daily_goal=gi,daily_production=prod,acc_goal=acc["goal"],acc_real=acc["real"],work_date=today.strftime("%d/%m/%Y"),status_date=sd,selected_status=ss,status_date_display=so.strftime("%d/%m/%Y"),team_daily=team_daily)
+ return render_template("user_dashboard.html",rows=rows,daily_goal=gi,daily_production=prod,acc_goal=acc["goal"],acc_real=acc["real"],work_date=today.strftime("%d/%m/%Y"),status_date=sd,selected_status=ss,status_date_display=so.strftime("%d/%m/%Y"),team_daily=team_daily,ro_filter=ro_filter)
 @app.route("/daily-status",methods=["POST"])
 @user_required
 def daily_status():
@@ -196,7 +201,13 @@ def master_toggle_return(record_id,kind):
 @app.route("/master")
 @master_required
 def master_dashboard():
- users=q("SELECT id,name,username,active,created_at FROM users ORDER BY name");raw=q("SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC");rows=[dict(r,overdue=is_overdue(r)) for r in raw];start=q("SELECT COUNT(*) n FROM records",one=True)["n"];today=q("SELECT COUNT(*) n FROM records WHERE DATE(created_at)=CURRENT_DATE" if IS_POSTGRES else "SELECT COUNT(*) n FROM records WHERE date(created_at)=date('now','localtime')",one=True)["n"];tel=q("SELECT COUNT(*) n FROM records WHERE telephony IS NOT NULL AND telephony<>''",one=True)["n"];bank=q("SELECT COUNT(*) n FROM records WHERE bank IS NOT NULL AND bank<>''",one=True)["n"];other=q("SELECT COUNT(*) n FROM records WHERE other_offices IS NOT NULL AND other_offices<>''",one=True)["n"];informed=q("SELECT COUNT(*) n FROM records WHERE informed=1",one=True)["n"];pending=start-informed
+ ro_filter=request.args.get("ro_filter","").strip()
+ users=q("SELECT id,name,username,active,created_at FROM users ORDER BY name")
+ if ro_filter:
+  raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.rio={PH} ORDER BY r.created_at DESC",(ro_filter,))
+ else:
+  raw=q("SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC")
+ rows=[dict(r,overdue=is_overdue(r)) for r in raw];start=q("SELECT COUNT(*) n FROM records",one=True)["n"];today=q("SELECT COUNT(*) n FROM records WHERE DATE(created_at)=CURRENT_DATE" if IS_POSTGRES else "SELECT COUNT(*) n FROM records WHERE date(created_at)=date('now','localtime')",one=True)["n"];tel=q("SELECT COUNT(*) n FROM records WHERE telephony IS NOT NULL AND telephony<>''",one=True)["n"];bank=q("SELECT COUNT(*) n FROM records WHERE bank IS NOT NULL AND bank<>''",one=True)["n"];other=q("SELECT COUNT(*) n FROM records WHERE other_offices IS NOT NULL AND other_offices<>''",one=True)["n"];informed=q("SELECT COUNT(*) n FROM records WHERE informed=1",one=True)["n"];pending=start-informed
  month_start=local_date().replace(day=1)
  month_end=local_date()
  points_by_user=q(f"SELECT u.name,COALESCE(SUM(CASE WHEN date(r.created_at)>={PH} AND date(r.created_at)<={PH} THEN r.indicted_count ELSE 0 END),0) indicted FROM users u LEFT JOIN records r ON r.user_id=u.id GROUP BY u.id,u.name ORDER BY u.name",(month_start.isoformat(),month_end.isoformat()))
@@ -208,7 +219,7 @@ def master_dashboard():
  for u in users:
   g=daily_goal_for(u["id"],date.fromisoformat(selected_date));prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],selected_date),True)["n"];acc=accumulated_for_user(u["id"])
   daily.append({"id":u["id"],"name":u["name"],"username":u["username"],"active":u["active"],"goal":g.get("goal",0),"effective_goal":g.get("goal",0),"status":g.get("status","trabalhando"),"assigned":True,"production":prod,"acc_goal":acc["goal"],"acc_real":acc["real"]})
- return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25)
+ return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter)
 @app.route("/master/daily-goal",methods=["POST"])
 @master_required
 def master_daily_goal():
