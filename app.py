@@ -236,8 +236,8 @@ def create_record():
     other_returned = 1 if request.form.get("other_returned") == "1" and other else 0
     if not RO_RE.fullmatch(rio):
         flash("RO inválido. Use 000-00000/AAAA.","danger")
-    elif not any([tel,bank,other]):
-        flash("Informe pelo menos um ofício.","danger")
+    elif tel not in ("Vivo","TIM","Claro"):
+        flash("FAÇA CONTATO COM A VÍTIMA E IDENTIFIQUE O TELEFONE QUE FEZ CONTATO.","warning")
     else:
         # Impede que o mesmo RIO/procedimento seja lançado novamente.
         existing=q(f"""SELECT r.created_at,u.name
