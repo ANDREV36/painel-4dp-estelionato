@@ -121,7 +121,7 @@ def user_dashboard():
  if ro_filter:
   raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} AND r.rio={PH} ORDER BY r.created_at DESC",(session["user_id"],ro_filter))
  else:
-  raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC",(session["user_id"],))
+  raw=q(f"SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.user_id={PH} ORDER BY r.created_at DESC",(session["user_id"],))
  rows=[dict(r,overdue=is_overdue(r)) for r in raw];today=local_date();gi=daily_goal_for(session["user_id"],today);prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(session["user_id"],today.isoformat()),True)["n"];acc=accumulated_for_user(session["user_id"]);all_users=q("SELECT id,name,active FROM users ORDER BY name");team_daily=[]
  for u in all_users:
   ug=daily_goal_for(u["id"],today);uprod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],today.isoformat()),True)["n"];uacc=accumulated_for_user(u["id"]);team_daily.append({"id":u["id"],"name":u["name"],"active":u["active"],"goal":ug["goal"],"production":uprod,"status":ug["status"],"acc_goal":uacc["goal"],"acc_real":uacc["real"]})
