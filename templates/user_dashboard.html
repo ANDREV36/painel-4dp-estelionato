@@ -11,7 +11,7 @@
     <div class="day-message pending">Sua meta de hoje ainda não foi definida pelo Master.</div>
   {% endif %}
   <div class="work-status"><span class="work-status-dot"></span><b>TRABALHANDO — status padrão</b><span class="muted status-help">Segunda a sexta: meta 3. Sábado e domingo: meta 0. OPERAÇÃO/FOLGA zeram a meta.</span></div>
-  <form method="get" action="/dashboard" class="date-form"><label>Dia</label><input type="date" name="status_date" value="{{status_date}}" max="{{status_date}}" onchange="this.form.submit()"></form>
+  <form method="get" action="/dashboard" class="date-form"><label>Dia</label><input type="date" name="status_date" value="{{status_date}}" onchange="this.form.submit()"></form>
   <form method="post" action="/daily-status" class="day-status-form" id="dayStatusForm">
     <input type="hidden" name="work_date" value="{{status_date}}">
     <input type="hidden" name="status" id="dayStatus" value="{{selected_status.status if selected_status.status in ['folga','operacao'] else 'trabalhando'}}">
