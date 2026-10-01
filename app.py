@@ -28,14 +28,14 @@ def init_db():
  if IS_POSTGRES:
   c.execute("CREATE TABLE IF NOT EXISTS users(id SERIAL PRIMARY KEY,name TEXT NOT NULL,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
   c.execute("CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL)")
-  c.execute("CREATE TABLE IF NOT EXISTS records(id SERIAL PRIMARY KEY,rio TEXT NOT NULL,telephony TEXT,bank TEXT,other_offices TEXT,telephony_returned INTEGER NOT NULL DEFAULT 0,bank_returned INTEGER NOT NULL DEFAULT 0,other_returned INTEGER NOT NULL DEFAULT 0,informed INTEGER NOT NULL DEFAULT 0,informed_at TIMESTAMP NULL,user_id INTEGER NOT NULL REFERENCES users(id),created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
+  c.execute("CREATE TABLE IF NOT EXISTS records(id SERIAL PRIMARY KEY,rio TEXT NOT NULL,indicted_count INTEGER NOT NULL DEFAULT 0,telephony TEXT,bank TEXT,other_offices TEXT,telephony_returned INTEGER NOT NULL DEFAULT 0,bank_returned INTEGER NOT NULL DEFAULT 0,other_returned INTEGER NOT NULL DEFAULT 0,informed INTEGER NOT NULL DEFAULT 0,informed_at TIMESTAMP NULL,user_id INTEGER NOT NULL REFERENCES users(id),created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP)")
   c.execute("CREATE TABLE IF NOT EXISTS daily_goals(id SERIAL PRIMARY KEY,user_id INTEGER NOT NULL REFERENCES users(id),work_date DATE NOT NULL,goal INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'trabalhando',UNIQUE(user_id,work_date))")
-  for col,typ in [("telephony_returned","INTEGER NOT NULL DEFAULT 0"),("bank_returned","INTEGER NOT NULL DEFAULT 0"),("other_returned","INTEGER NOT NULL DEFAULT 0"),("informed","INTEGER NOT NULL DEFAULT 0"),("informed_at","TIMESTAMP NULL")]: c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col} {typ}")
+  for col,typ in [("indicted_count","INTEGER NOT NULL DEFAULT 0"),("telephony_returned","INTEGER NOT NULL DEFAULT 0"),("bank_returned","INTEGER NOT NULL DEFAULT 0"),("other_returned","INTEGER NOT NULL DEFAULT 0"),("informed","INTEGER NOT NULL DEFAULT 0"),("informed_at","TIMESTAMP NULL")]: c.execute(f"ALTER TABLE records ADD COLUMN IF NOT EXISTS {col} {typ}")
  else:
   c.executescript("CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL,username TEXT UNIQUE NOT NULL,password_hash TEXT NOT NULL,active INTEGER NOT NULL DEFAULT 1,created_at TEXT NOT NULL);CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);CREATE TABLE IF NOT EXISTS records(id INTEGER PRIMARY KEY AUTOINCREMENT,rio TEXT NOT NULL,telephony TEXT,bank TEXT,other_offices TEXT,telephony_returned INTEGER NOT NULL DEFAULT 0,bank_returned INTEGER NOT NULL DEFAULT 0,other_returned INTEGER NOT NULL DEFAULT 0,informed INTEGER NOT NULL DEFAULT 0,informed_at TIMESTAMP NULL,user_id INTEGER NOT NULL,created_at TEXT NOT NULL,FOREIGN KEY(user_id) REFERENCES users(id));")
   c.execute("CREATE TABLE IF NOT EXISTS daily_goals(id INTEGER PRIMARY KEY AUTOINCREMENT,user_id INTEGER NOT NULL,work_date TEXT NOT NULL,goal INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT 'trabalhando',UNIQUE(user_id,work_date),FOREIGN KEY(user_id) REFERENCES users(id))")
   cols={r[1] for r in c.execute("PRAGMA table_info(records)").fetchall()}
-  for col,typ in [("telephony_returned","INTEGER NOT NULL DEFAULT 0"),("bank_returned","INTEGER NOT NULL DEFAULT 0"),("other_returned","INTEGER NOT NULL DEFAULT 0"),("informed","INTEGER NOT NULL DEFAULT 0"),("informed_at","TEXT")]:
+  for col,typ in [("indicted_count","INTEGER NOT NULL DEFAULT 0"),("telephony_returned","INTEGER NOT NULL DEFAULT 0"),("bank_returned","INTEGER NOT NULL DEFAULT 0"),("other_returned","INTEGER NOT NULL DEFAULT 0"),("informed","INTEGER NOT NULL DEFAULT 0"),("informed_at","TEXT")]:
    if col not in cols:c.execute(f"ALTER TABLE records ADD COLUMN {col} {typ}")
  mig2=c.execute("SELECT value FROM settings WHERE key='system_start_v2_migrated'").fetchone()
  if not mig2:
@@ -137,8 +137,10 @@ def daily_status():
 @app.route("/records",methods=["POST"])
 @user_required
 def create_record():
- rio=request.form["rio"].strip();tel=request.form.get("telephony","").strip();bank=request.form.get("bank","").strip();other=request.form.get("other_offices","").strip();tr=1 if request.form.get("telephony_returned")=="1" and tel else 0;br=1 if request.form.get("bank_returned")=="1" and bank else 0;orr=1 if request.form.get("other_returned")=="1" and other else 0
+ rio=request.form["rio"].strip();indicted_raw=request.form.get("indicted_count","").strip();tel=request.form.get("telephony","").strip();bank=request.form.get("bank","").strip();other=request.form.get("other_offices","").strip();tr=1 if request.form.get("telephony_returned")=="1" and tel else 0;br=1 if request.form.get("bank_returned")=="1" and bank else 0;orr=1 if request.form.get("other_returned")=="1" and other else 0
  if not RO_RE.fullmatch(rio):flash("RO inválido. Use 000-00000/AAAA.","danger")
+ elif not indicted_raw.isdigit() or int(indicted_raw) < 0:flash("Informe a quantidade de indiciados.","warning")
+ else:indicted_count=int(indicted_raw)
  elif tel not in ("Vivo","TIM","Claro"):flash("FAÇA CONTATO COM A VÍTIMA E IDENTIFIQUE O TELEFONE QUE FEZ CONTATO.","warning")
  elif not bank or not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿ]",bank):flash("IDENTIFIQUE COM A VITIMA, SOLICITE O COMPROVANTE PARA SABER PARA QUE BANCO O $ FOI TRASFERIDO","warning")
  else:
@@ -146,8 +148,8 @@ def create_record():
   if existing:flash(f"Este procedimento já está sendo trabalhado por {existing['name']}.","warning")
   else:
    c=conn();now=datetime.now()
-   if IS_POSTGRES:c.execute("INSERT INTO records(rio,telephony,bank,other_offices,telephony_returned,bank_returned,other_returned,informed,informed_at,user_id) VALUES(%s,%s,%s,%s,%s,%s,%s,0,NULL,%s)",(rio,tel or None,bank or None,other or None,tr,br,orr,session["user_id"]))
-   else:c.execute("INSERT INTO records(rio,telephony,bank,other_offices,telephony_returned,bank_returned,other_returned,informed,informed_at,user_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",(rio,tel or None,bank or None,other or None,tr,br,orr,0,None,session["user_id"],now.isoformat(timespec="seconds")))
+   if IS_POSTGRES:c.execute("INSERT INTO records(rio,indicted_count,telephony,bank,other_offices,telephony_returned,bank_returned,other_returned,informed,informed_at,user_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,0,NULL,%s)",(rio,indicted_count,tel or None,bank or None,other or None,tr,br,orr,session["user_id"]))
+   else:c.execute("INSERT INTO records(rio,indicted_count,telephony,bank,other_offices,telephony_returned,bank_returned,other_returned,informed,informed_at,user_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(rio,indicted_count,tel or None,bank or None,other or None,tr,br,orr,0,None,session["user_id"],now.isoformat(timespec="seconds")))
    c.commit();c.close();flash("Procedimento salvo.","success")
  return redirect(url_for("user_dashboard"))
 @app.route("/records/<int:record_id>/toggle-return/<kind>",methods=["POST"])
@@ -164,8 +166,9 @@ def toggle_return(record_id,kind):
 @app.route("/records/<int:record_id>/toggle-informed",methods=["POST"])
 @user_required
 def toggle_informed(record_id):
- r=q(f"SELECT id,user_id,informed FROM records WHERE id={PH}",(record_id,),True)
+ r=q(f"SELECT id,user_id,informed,indicted_count FROM records WHERE id={PH}",(record_id,),True)
  if not r or int(r["user_id"])!=int(session["user_id"]):flash("Você não pode alterar este procedimento.","danger");return redirect(url_for("user_dashboard"))
+ if not int(r["informed"] or 0) and int(r["indicted_count"] or 0) <= 0:flash("Informe a quantidade de indiciados antes de marcar como informado.","warning");return redirect(url_for("user_dashboard"))
  new=0 if int(r["informed"] or 0) else 1;stamp=local_now().strftime("%Y-%m-%d %H:%M:%S") if new else None;c=conn()
  if IS_POSTGRES:c.execute("UPDATE records SET informed=%s,informed_at=%s WHERE id=%s",(new,stamp,record_id))
  else:c.execute("UPDATE records SET informed=?,informed_at=? WHERE id=?",(new,stamp,record_id))
@@ -173,8 +176,9 @@ def toggle_informed(record_id):
 @app.route("/master/records/<int:record_id>/toggle-informed",methods=["POST"])
 @master_required
 def master_toggle_informed(record_id):
- r=q(f"SELECT informed FROM records WHERE id={PH}",(record_id,),True)
+ r=q(f"SELECT informed,indicted_count FROM records WHERE id={PH}",(record_id,),True)
  if not r:flash("Procedimento não encontrado.","danger");return redirect(url_for("master_dashboard"))
+ if not int(r["informed"] or 0) and int(r["indicted_count"] or 0) <= 0:flash("Informe a quantidade de indiciados antes de marcar como informado.","warning");return redirect(url_for("master_dashboard"))
  new=0 if int(r["informed"] or 0) else 1;stamp=local_now().strftime("%Y-%m-%d %H:%M:%S") if new else None;c=conn()
  if IS_POSTGRES:c.execute("UPDATE records SET informed=%s,informed_at=%s WHERE id=%s",(new,stamp,record_id))
  else:c.execute("UPDATE records SET informed=?,informed_at=? WHERE id=?",(new,stamp,record_id))
@@ -192,6 +196,9 @@ def master_toggle_return(record_id,kind):
 @master_required
 def master_dashboard():
  users=q("SELECT id,name,username,active,created_at FROM users ORDER BY name");raw=q("SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id ORDER BY r.created_at DESC");rows=[dict(r,overdue=is_overdue(r)) for r in raw];start=q("SELECT COUNT(*) n FROM records",one=True)["n"];today=q("SELECT COUNT(*) n FROM records WHERE DATE(created_at)=CURRENT_DATE" if IS_POSTGRES else "SELECT COUNT(*) n FROM records WHERE date(created_at)=date('now','localtime')",one=True)["n"];tel=q("SELECT COUNT(*) n FROM records WHERE telephony IS NOT NULL AND telephony<>''",one=True)["n"];bank=q("SELECT COUNT(*) n FROM records WHERE bank IS NOT NULL AND bank<>''",one=True)["n"];other=q("SELECT COUNT(*) n FROM records WHERE other_offices IS NOT NULL AND other_offices<>''",one=True)["n"];informed=q("SELECT COUNT(*) n FROM records WHERE informed=1",one=True)["n"];pending=start-informed
+ month_start=local_date().replace(day=1)
+ month_end=local_date()
+ points_by_user=q(f"SELECT u.name,COALESCE(SUM(CASE WHEN date(r.created_at)>={PH} AND date(r.created_at)<={PH} THEN r.indicted_count ELSE 0 END),0) indicted FROM users u LEFT JOIN records r ON r.user_id=u.id GROUP BY u.id,u.name ORDER BY u.name",(month_start.isoformat(),month_end.isoformat()))
  byuser=q("SELECT u.name,COUNT(DISTINCT r.rio) procedures,COUNT(DISTINCT CASE WHEN r.informed=1 THEN r.rio END) informed,SUM(CASE WHEN r.telephony IS NOT NULL AND r.telephony<>'' THEN 1 ELSE 0 END) telephony,SUM(CASE WHEN r.bank IS NOT NULL AND r.bank<>'' THEN 1 ELSE 0 END) bank,SUM(CASE WHEN r.other_offices IS NOT NULL AND r.other_offices<>'' THEN 1 ELSE 0 END) other,SUM(CASE WHEN r.telephony_returned=1 THEN 1 ELSE 0 END) telephony_returned,SUM(CASE WHEN r.bank_returned=1 THEN 1 ELSE 0 END) bank_returned,SUM(CASE WHEN r.other_returned=1 THEN 1 ELSE 0 END) other_returned FROM users u LEFT JOIN records r ON r.user_id=u.id GROUP BY u.id,u.name ORDER BY procedures DESC")
  selected_date=request.args.get("date") or local_date().isoformat()
  try:date.fromisoformat(selected_date)
@@ -200,7 +207,7 @@ def master_dashboard():
  for u in users:
   g=daily_goal_for(u["id"],date.fromisoformat(selected_date));prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],selected_date),True)["n"];acc=accumulated_for_user(u["id"])
   daily.append({"id":u["id"],"name":u["name"],"username":u["username"],"active":u["active"],"goal":g.get("goal",0),"effective_goal":g.get("goal",0),"status":g.get("status","trabalhando"),"assigned":True,"production":prod,"acc_goal":acc["goal"],"acc_real":acc["real"]})
- return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending)
+ return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25)
 @app.route("/master/daily-goal",methods=["POST"])
 @master_required
 def master_daily_goal():
