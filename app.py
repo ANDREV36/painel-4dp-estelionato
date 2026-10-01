@@ -1,5 +1,5 @@
 import os, re
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
@@ -98,6 +98,10 @@ def init_db():
             c.execute("ALTER TABLE records ADD COLUMN informed_at TEXT")
     # Migração única: nas versões anteriores "operacao" era o estado padrão.
     # Agora o padrão é "trabalhando" (nenhuma das duas caixas marcada).
+    start_setting = c.execute("SELECT value FROM settings WHERE key='system_start_date'").fetchone()
+    if not start_setting:
+        if IS_POSTGRES: c.execute("INSERT INTO settings(key,value) VALUES(%s,%s)", ("system_start_date", local_date().isoformat()))
+        else: c.execute("INSERT INTO settings(key,value) VALUES(?,?)", ("system_start_date", local_date().isoformat()))
     mig = c.execute("SELECT value FROM settings WHERE key='daily_status_v12_migrated'").fetchone()
     if not mig:
         c.execute("UPDATE daily_goals SET status='trabalhando' WHERE status='operacao'")
@@ -114,6 +118,13 @@ def setting(key, default="0"):
     r=q(f"SELECT value FROM settings WHERE key={PH}", (key,), True)
     return r["value"] if r else default
 
+def system_start_date():
+    try: return date.fromisoformat(setting('system_start_date', local_date().isoformat()))
+    except ValueError: return local_date()
+
+def default_daily_goal(work_date):
+    return 0 if work_date.weekday() >= 5 else 3
+
 def daily_goal_for(user_id, work_date=None):
     work_date = work_date or local_date()
     r=q(f"SELECT goal,status FROM daily_goals WHERE user_id={PH} AND work_date={PH}",
@@ -125,9 +136,9 @@ def daily_goal_for(user_id, work_date=None):
     return {"goal": effective_goal,
             "base_goal": int(r["goal"] or 0), "status": status, "assigned":True}
 
-def upsert_daily_goal(user_id, work_date, goal, status="trabalhando"):
+def upsert_daily_goal(user_id, work_date, goal=3, status="trabalhando"):
     status = status if status in ("trabalhando", "operacao", "folga") else "trabalhando"
-    goal = max(0, int(goal))
+    goal = default_daily_goal(work_date)
     if IS_POSTGRES:
         c=conn(); c.execute("""INSERT INTO daily_goals(user_id,work_date,goal,status) VALUES(%s,%s,%s,%s)
             ON CONFLICT(user_id,work_date) DO UPDATE SET goal=EXCLUDED.goal,status=EXCLUDED.status""",
