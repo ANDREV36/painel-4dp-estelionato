@@ -364,8 +364,9 @@ def master_toggle_return(record_id, kind):
 @master_required
 def master_dashboard():
     users=q("SELECT id,name,username,active,created_at FROM users ORDER BY name")
-    rows=q("""SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id
+    raw_rows=q("""SELECT r.*,u.name FROM records r JOIN users u ON u.id=r.user_id
               ORDER BY r.created_at DESC""")
+    rows=[dict(r, overdue=is_overdue(r)) for r in raw_rows]
     start=q("SELECT COUNT(*) n FROM records",one=True)["n"]
     today=q("SELECT COUNT(*) n FROM records WHERE DATE(created_at)=CURRENT_DATE" if IS_POSTGRES
             else "SELECT COUNT(*) n FROM records WHERE date(created_at)=date('now','localtime')",one=True)["n"]
@@ -395,9 +396,11 @@ def master_dashboard():
         g=daily_goal_for(u["id"], date.fromisoformat(selected_date))
         prod=q(f"""SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}""",
                (u["id"],selected_date),True)["n"]
+        acc=accumulated_for_user(u["id"])
         daily.append({"id":u["id"],"name":u["name"],"username":u["username"],"active":u["active"],
-                      "goal":g.get("base_goal",0),"effective_goal":g.get("goal",0),
-                      "status":g.get("status","operacao"),"assigned":g.get("assigned",False),"production":prod})
+                      "goal":g.get("goal",0),"effective_goal":g.get("goal",0),
+                      "status":g.get("status","trabalhando"),"assigned":True,"production":prod,
+                      "acc_goal":acc["goal"],"acc_real":acc["real"]})
     return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),
         total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,
         daily=daily,selected_date=selected_date,informed=informed,pending=pending)
