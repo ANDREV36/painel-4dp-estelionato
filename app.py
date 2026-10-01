@@ -100,8 +100,14 @@ def init_db():
     # Agora o padrão é "trabalhando" (nenhuma das duas caixas marcada).
     start_setting = c.execute("SELECT value FROM settings WHERE key='system_start_date'").fetchone()
     if not start_setting:
-        if IS_POSTGRES: c.execute("INSERT INTO settings(key,value) VALUES(%s,%s)", ("system_start_date", local_date().isoformat()))
-        else: c.execute("INSERT INTO settings(key,value) VALUES(?,?)", ("system_start_date", local_date().isoformat()))
+        first_record = c.execute("SELECT MIN(created_at) AS first_date FROM records").fetchone()
+        first_date = first_record["first_date"] if first_record and first_record["first_date"] else local_date().isoformat()
+        if hasattr(first_date, "date"):
+            first_date = first_date.date().isoformat()
+        else:
+            first_date = str(first_date)[:10]
+        if IS_POSTGRES: c.execute("INSERT INTO settings(key,value) VALUES(%s,%s)", ("system_start_date", first_date))
+        else: c.execute("INSERT INTO settings(key,value) VALUES(?,?)", ("system_start_date", first_date))
     mig = c.execute("SELECT value FROM settings WHERE key='daily_status_v12_migrated'").fetchone()
     if not mig:
         c.execute("UPDATE daily_goals SET status='trabalhando' WHERE status='operacao'")
