@@ -221,31 +221,36 @@ def accumulated_for_user(user_id, through_date=None):
 @app.route("/dashboard")
 @user_required
 def user_dashboard():
-    rows=q(f"""SELECT r.*, u.name FROM records r JOIN users u ON u.id=r.user_id
+    raw_rows=q(f"""SELECT r.*, u.name FROM records r JOIN users u ON u.id=r.user_id
                WHERE r.user_id={PH} ORDER BY r.created_at DESC""",(session["user_id"],))
+    rows=[dict(r, overdue=is_overdue(r)) for r in raw_rows]
     today=local_date()
     goal_info=daily_goal_for(session["user_id"], today)
     production=q(f"""SELECT COUNT(DISTINCT rio) n FROM records
                       WHERE user_id={PH} AND date(created_at)={PH}""",
                  (session["user_id"], today.isoformat()), True)["n"]
+    status_date=request.args.get("status_date") or today.isoformat()
+    try: status_obj=date.fromisoformat(status_date)
+    except ValueError: status_obj=today; status_date=today.isoformat()
+    selected_status=daily_goal_for(session["user_id"],status_obj)
     return render_template("user_dashboard.html", rows=rows, daily_goal=goal_info,
-                           daily_production=production, work_date=today.strftime("%d/%m/%Y"))
+                           daily_production=production, work_date=today.strftime("%d/%m/%Y"),
+                           status_date=status_date, selected_status=selected_status,
+                           status_date_display=status_obj.strftime("%d/%m/%Y"))
 
 @app.route("/daily-status", methods=["POST"])
 @user_required
 def daily_status():
     status=request.form.get("status","trabalhando")
-    if status not in ("trabalhando", "operacao", "folga"):
-        status="trabalhando"
-    today=local_date()
-    current=daily_goal_for(session["user_id"], today)
-    if not current.get("assigned"):
-        flash("A meta de hoje ainda não foi definida pelo Master.", "warning")
-    else:
-        upsert_daily_goal(session["user_id"], today, current.get("base_goal", current.get("goal",0)), status)
-        flash("Status do dia atualizado.", "success")
-    return redirect(url_for("user_dashboard"))
-
+    if status not in ("trabalhando","operacao","folga"): status="trabalhando"
+    try: work_date=date.fromisoformat(request.form.get("work_date") or local_date().isoformat())
+    except ValueError: work_date=local_date()
+    if work_date>local_date():
+        flash("Não é permitido alterar um dia futuro.","danger")
+        return redirect(url_for("user_dashboard"))
+    upsert_daily_goal(session["user_id"],work_date,default_daily_goal(work_date),status)
+    flash("Status do dia atualizado.","success")
+    return redirect(url_for("user_dashboard",status_date=work_date.isoformat()))
 @app.route("/records", methods=["POST"])
 @user_required
 def create_record():
