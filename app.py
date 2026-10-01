@@ -96,6 +96,7 @@ def master_login():
 def logout():session.clear();return redirect(url_for("login"))
 def is_overdue(record):
  if int(record["informed"] or 0) or int(record["telephony_returned"] or 0) or int(record["bank_returned"] or 0) or int(record["other_returned"] or 0):return False
+ if not (record["telephony"] or record["bank"] or record["other_offices"]):return False
  created=record["created_at"]
  if isinstance(created,str):
   try:created=datetime.fromisoformat(created.replace("Z","+00:00"))
