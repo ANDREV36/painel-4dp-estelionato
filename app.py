@@ -158,6 +158,26 @@ def create_record():
    else:c.execute("INSERT INTO records(rio,indicted_count,telephony,bank,other_offices,telephony_returned,bank_returned,other_returned,informed,informed_at,user_id,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(rio,indicted_count,tel or None,bank or None,other or None,tr,br,orr,0,None,session["user_id"],now.isoformat(timespec="seconds")))
    c.commit();c.close();flash("Procedimento salvo.","success")
  return redirect(url_for("user_dashboard"))
+@app.route("/records/<int:record_id>/delete",methods=["POST"])
+@user_required
+def delete_record(record_id):
+ r=q(f"SELECT id,user_id FROM records WHERE id={PH}",(record_id,),True)
+ if not r or int(r["user_id"])!=int(session["user_id"]):
+  flash("Você não pode excluir este procedimento.","danger");return redirect(url_for("user_dashboard"))
+ c=conn()
+ c.execute(f"DELETE FROM records WHERE id={PH}",(record_id,))
+ c.commit();c.close();flash("Lançamento excluído.","success");return redirect(url_for("user_dashboard"))
+
+@app.route("/master/records/<int:record_id>/delete",methods=["POST"])
+@master_required
+def master_delete_record(record_id):
+ r=q(f"SELECT id FROM records WHERE id={PH}",(record_id,),True)
+ if not r:
+  flash("Procedimento não encontrado.","danger");return redirect(url_for("master_dashboard"))
+ c=conn()
+ c.execute(f"DELETE FROM records WHERE id={PH}",(record_id,))
+ c.commit();c.close();flash("Lançamento excluído pelo Master.","success");return redirect(url_for("master_dashboard"))
+
 @app.route("/records/<int:record_id>/toggle-return/<kind>",methods=["POST"])
 @user_required
 def toggle_return(record_id,kind):
