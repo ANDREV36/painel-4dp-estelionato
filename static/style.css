@@ -4,3 +4,5 @@
 .team-goal-table th:first-child,.team-goal-table td:first-child{text-align:left}
 .team-goal-table td strong{font-size:18px}
 .team-goal-table .current-user-row{font-weight:800}
+
+.points-stats{grid-template-columns:repeat(auto-fit,minmax(180px,1fr));margin-top:-6px}.points-stat{border-left:5px solid #1769e0}.points-stat b{font-size:30px}.points-stat small{line-height:1.45}
