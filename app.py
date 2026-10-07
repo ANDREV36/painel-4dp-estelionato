@@ -384,4 +384,8 @@ def goal():
 def api_rio(rio):
  rows=q(f"SELECT r.rio,r.telephony,r.bank,r.other_offices,r.created_at,u.name FROM records r JOIN users u ON u.id=r.user_id WHERE r.rio={PH} ORDER BY r.created_at DESC",(rio,));return jsonify([dict(x) for x in rows])
 init_db()
+# Regra de consistência: procedimentos ainda não informados não podem ter indiciados.
+c=conn()
+c.execute("UPDATE records SET indicted_count=0 WHERE informed=0 AND indicted_count<>0")
+c.commit();c.close()
 if __name__=="__main__":app.run(host="0.0.0.0",port=int(os.environ.get("PORT","5000")))
