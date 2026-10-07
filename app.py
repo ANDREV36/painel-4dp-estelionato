@@ -144,11 +144,10 @@ def daily_status():
 @app.route("/records",methods=["POST"])
 @user_required
 def create_record():
- rio=request.form["rio"].strip();indicted_raw=request.form.get("indicted_count","").strip();tel=request.form.get("telephony","").strip();bank=request.form.get("bank","").strip();other=request.form.get("other_offices","").strip();tr=1 if request.form.get("telephony_returned")=="1" and tel else 0;br=1 if request.form.get("bank_returned")=="1" and bank else 0;orr=1 if request.form.get("other_returned")=="1" and other else 0
+ rio=request.form["rio"].strip();indicted_raw="0";tel=request.form.get("telephony","").strip();bank=request.form.get("bank","").strip();other=request.form.get("other_offices","").strip();tr=1 if request.form.get("telephony_returned")=="1" and tel else 0;br=1 if request.form.get("bank_returned")=="1" and bank else 0;orr=1 if request.form.get("other_returned")=="1" and other else 0
  try:indicted_count=int(indicted_raw)
  except ValueError:indicted_count=-1
  if not RO_RE.fullmatch(rio):flash("RO inválido. Use 000-00000/AAAA.","danger")
- elif indicted_count < 0:flash("Informe a quantidade de indiciados.","warning")
  elif tel not in ("Vivo","TIM","Claro"):flash("FAÇA CONTATO COM A VÍTIMA E IDENTIFIQUE O TELEFONE QUE FEZ CONTATO.","warning")
  elif not bank or not re.search(r"[A-Za-zÀ-ÖØ-öø-ÿ]",bank):flash("IDENTIFIQUE COM A VITIMA, SOLICITE O COMPROVANTE PARA SABER PARA QUE BANCO O $ FOI TRASFERIDO","warning")
  else:
@@ -196,7 +195,6 @@ def toggle_return(record_id,kind):
 def toggle_informed(record_id):
  r=q(f"SELECT id,user_id,informed,indicted_count FROM records WHERE id={PH}",(record_id,),True)
  if not r or int(r["user_id"])!=int(session["user_id"]):flash("Você não pode alterar este procedimento.","danger");return redirect(url_for("user_dashboard"))
- if not int(r["informed"] or 0) and int(r["indicted_count"] or 0) <= 0:flash("Informe a quantidade de indiciados antes de marcar como informado.","warning");return redirect(url_for("user_dashboard"))
  new=0 if int(r["informed"] or 0) else 1;stamp=local_now().strftime("%Y-%m-%d %H:%M:%S") if new else None;c=conn()
  if IS_POSTGRES:c.execute("UPDATE records SET informed=%s,informed_at=%s WHERE id=%s",(new,stamp,record_id))
  else:c.execute("UPDATE records SET informed=?,informed_at=? WHERE id=?",(new,stamp,record_id))
@@ -206,11 +204,32 @@ def toggle_informed(record_id):
 def master_toggle_informed(record_id):
  r=q(f"SELECT informed,indicted_count FROM records WHERE id={PH}",(record_id,),True)
  if not r:flash("Procedimento não encontrado.","danger");return redirect(url_for("master_dashboard"))
- if not int(r["informed"] or 0) and int(r["indicted_count"] or 0) <= 0:flash("Informe a quantidade de indiciados antes de marcar como informado.","warning");return redirect(url_for("master_dashboard"))
  new=0 if int(r["informed"] or 0) else 1;stamp=local_now().strftime("%Y-%m-%d %H:%M:%S") if new else None;c=conn()
  if IS_POSTGRES:c.execute("UPDATE records SET informed=%s,informed_at=%s WHERE id=%s",(new,stamp,record_id))
  else:c.execute("UPDATE records SET informed=?,informed_at=? WHERE id=?",(new,stamp,record_id))
  c.commit();c.close();return redirect(url_for("master_dashboard"))
+@app.route("/records/<int:record_id>/update-indicted",methods=["POST"])
+@user_required
+def update_indicted(record_id):
+ r=q(f"SELECT id,user_id,informed FROM records WHERE id={PH}",(record_id,),True)
+ if not r or int(r["user_id"])!=int(session["user_id"]):
+  flash("Você não pode alterar este procedimento.","danger");return redirect(url_for("user_dashboard"))
+ if not int(r["informed"] or 0):
+  flash("O procedimento precisa estar informado antes de alterar os indiciados.","warning");return redirect(url_for("user_dashboard"))
+ try:n=max(0,int(request.form.get("indicted_count","0")))
+ except ValueError:n=0
+ c=conn();c.execute(f"UPDATE records SET indicted_count={PH} WHERE id={PH}",(n,record_id));c.commit();c.close();flash("Quantidade de indiciados atualizada.","success");return redirect(url_for("user_dashboard"))
+
+@app.route("/master/records/<int:record_id>/update-indicted",methods=["POST"])
+@master_required
+def master_update_indicted(record_id):
+ r=q(f"SELECT id,informed FROM records WHERE id={PH}",(record_id,),True)
+ if not r:flash("Procedimento não encontrado.","danger");return redirect(url_for("master_dashboard"))
+ if not int(r["informed"] or 0):
+  flash("O procedimento precisa estar informado antes de alterar os indiciados.","warning");return redirect(url_for("master_dashboard"))
+ try:n=max(0,int(request.form.get("indicted_count","0")))
+ except ValueError:n=0
+ c=conn();c.execute(f"UPDATE records SET indicted_count={PH} WHERE id={PH}",(n,record_id));c.commit();c.close();flash("Quantidade de indiciados atualizada.","success");return redirect(url_for("master_dashboard"))
 @app.route("/master/records/<int:record_id>/toggle-return/<kind>",methods=["POST"])
 @master_required
 def master_toggle_return(record_id,kind):
@@ -237,6 +256,27 @@ def master_dashboard():
  selected_date=request.args.get("date") or local_date().isoformat()
  try:date.fromisoformat(selected_date)
  except ValueError:selected_date=local_date().isoformat()
+ period_start=request.args.get("period_start") or first_day.isoformat()
+ period_end=request.args.get("period_end") or local_date().isoformat()
+ try:
+  ps=date.fromisoformat(period_start);pe=date.fromisoformat(period_end)
+  if pe<ps:raise ValueError
+ except ValueError:
+  ps=first_day;pe=local_date();period_start=ps.isoformat();period_end=pe.isoformat()
+ period_summary=[]
+ for u in users[:3]:
+  status_rows=q(f"SELECT work_date,status FROM daily_goals WHERE user_id={PH} AND work_date>={PH} AND work_date<={PH}",(u["id"],ps,pe))
+  status_map={str(x["work_date"]):(x["status"] or "trabalhando") for x in status_rows}
+  rr=q(f"SELECT COUNT(DISTINCT rio) procedures,COUNT(DISTINCT CASE WHEN informed=1 THEN rio END) informed,COALESCE(SUM(indicted_count),0) indicted,COUNT(DISTINCT CASE WHEN indicted_count>0 THEN rio END) indicted_procedures,COALESCE(SUM(CASE WHEN telephony IS NOT NULL AND telephony<>"" THEN 1 ELSE 0 END),0) telephony,COALESCE(SUM(CASE WHEN bank IS NOT NULL AND bank<>"" THEN 1 ELSE 0 END),0) bank,COALESCE(SUM(CASE WHEN other_offices IS NOT NULL AND other_offices<>"" THEN 1 ELSE 0 END),0) other FROM records WHERE user_id={PH} AND date(created_at)>={PH} AND date(created_at)<={PH}",(u["id"],ps.isoformat(),pe.isoformat()),True)
+  business_days=folgas=operacoes=meta=0;d=ps
+  while d<=pe:
+   if d.weekday()<5:
+    business_days+=1;st=status_map.get(d.isoformat(),"trabalhando")
+    if st=="folga":folgas+=1
+    elif st=="operacao":operacoes+=1
+    else:meta+=3
+   d+=timedelta(days=1)
+  period_summary.append({"name":u["name"],"business_days":business_days,"folgas":folgas,"operacoes":operacoes,"meta":meta,"real":int(rr["procedures"] or 0),"telephony":int(rr["telephony"] or 0),"bank":int(rr["bank"] or 0),"other":int(rr["other"] or 0),"procedures":int(rr["procedures"] or 0),"informed":int(rr["informed"] or 0),"indicted":int(rr["indicted"] or 0),"indicted_procedures":int(rr["indicted_procedures"] or 0)})
  daily=[]
  for u in users:
   g=daily_goal_for(u["id"],date.fromisoformat(selected_date));prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],selected_date),True)["n"];acc=accumulated_for_user(u["id"])
@@ -277,7 +317,7 @@ def master_dashboard():
   d+=timedelta(days=1)
  leading_days=first_day.weekday()
  calendar_days=[{"date":None,"day":None,"weekday":None,"segments":[]} for _ in range(leading_days)]+calendar_days
- return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter,calendar_days=calendar_days,calendar_month=calendar_month,calendar_month_label=first_day.strftime("%B/%Y").capitalize(),calendar_prev=prev_month,calendar_next=next_month,calendar_users=users[:3])
+ return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter,calendar_days=calendar_days,calendar_month=calendar_month,calendar_month_label=first_day.strftime("%B/%Y").capitalize(),calendar_prev=prev_month,calendar_next=next_month,calendar_users=users[:3],period_start=period_start,period_end=period_end,period_summary=period_summary)
 @app.route("/master/daily-goal",methods=["POST"])
 @master_required
 def master_daily_goal():
