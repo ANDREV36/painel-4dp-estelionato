@@ -1,4 +1,5 @@
 import os, re
+import calendar
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 from functools import wraps
@@ -240,7 +241,43 @@ def master_dashboard():
  for u in users:
   g=daily_goal_for(u["id"],date.fromisoformat(selected_date));prod=q(f"SELECT COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)={PH}",(u["id"],selected_date),True)["n"];acc=accumulated_for_user(u["id"])
   daily.append({"id":u["id"],"name":u["name"],"username":u["username"],"active":u["active"],"goal":g.get("goal",0),"effective_goal":g.get("goal",0),"status":g.get("status","trabalhando"),"assigned":True,"production":prod,"acc_goal":acc["goal"],"acc_real":acc["real"]})
- return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter)
+ # Calendário mensal: cada dia é dividido em um bloco por usuário.
+ calendar_month=request.args.get("month") or local_date().strftime("%Y-%m")
+ try:
+  cal_year,cal_mon=map(int,calendar_month.split("-"))
+  if cal_mon<1 or cal_mon>12: raise ValueError
+ except ValueError:
+  cal_year,cal_mon=local_date().year,local_date().month
+  calendar_month=f"{cal_year:04d}-{cal_mon:02d}"
+ first_day=date(cal_year,cal_mon,1)
+ last_day=date(cal_year,cal_mon,calendar.monthrange(cal_year,cal_mon)[1])
+ prev_month=(first_day-timedelta(days=1)).strftime("%Y-%m")
+ next_month=(last_day+timedelta(days=1)).strftime("%Y-%m")
+ month_prod={}
+ month_status={}
+ for u in users[:3]:
+  prod_rows=q(f"SELECT date(created_at) work_date,COUNT(DISTINCT rio) n FROM records WHERE user_id={PH} AND date(created_at)>={PH} AND date(created_at)<={PH} GROUP BY date(created_at)",(u["id"],first_day.isoformat(),last_day.isoformat()))
+  month_prod[u["id"]]={str(x["work_date"]):int(x["n"] or 0) for x in prod_rows}
+  st_rows=q(f"SELECT work_date,status FROM daily_goals WHERE user_id={PH} AND work_date>={PH} AND work_date<={PH}",(u["id"],first_day,last_day))
+  month_status[u["id"]]={str(x["work_date"]):(x["status"] or "trabalhando") for x in st_rows}
+ calendar_days=[]
+ d=first_day
+ while d<=last_day:
+  segments=[]
+  for u in users[:3]:
+   key=d.isoformat()
+   if d>local_date():
+    st="future"; count=None
+   elif d.weekday()>=5:
+    st="weekend"; count=month_prod.get(u["id"],{}).get(key,0)
+   else:
+    st=month_status.get(u["id"],{}).get(key,"trabalhando"); count=month_prod.get(u["id"],{}).get(key,0)
+   segments.append({"name":u["name"],"count":count,"status":st})
+  calendar_days.append({"date":d,"day":d.day,"weekday":d.weekday(),"segments":segments})
+  d+=timedelta(days=1)
+ while len(calendar_days) and calendar_days[0]["weekday"]>0:
+  calendar_days.insert(0,{"date":None,"day":None,"weekday":None,"segments":[]})
+ return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter,calendar_days=calendar_days,calendar_month=calendar_month,calendar_month_label=first_day.strftime("%B/%Y").capitalize(),calendar_prev=prev_month,calendar_next=next_month,calendar_users=users[:3])
 @app.route("/master/daily-goal",methods=["POST"])
 @master_required
 def master_daily_goal():
