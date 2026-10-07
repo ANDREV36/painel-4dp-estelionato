@@ -256,7 +256,7 @@ def master_dashboard():
  selected_date=request.args.get("date") or local_date().isoformat()
  try:date.fromisoformat(selected_date)
  except ValueError:selected_date=local_date().isoformat()
- period_start=request.args.get("period_start") or first_day.isoformat()
+ period_start=request.args.get("period_start") or month_start.isoformat()
  period_end=request.args.get("period_end") or local_date().isoformat()
  try:
   ps=date.fromisoformat(period_start);pe=date.fromisoformat(period_end)
@@ -267,7 +267,7 @@ def master_dashboard():
  for u in users[:3]:
   status_rows=q(f"SELECT work_date,status FROM daily_goals WHERE user_id={PH} AND work_date>={PH} AND work_date<={PH}",(u["id"],ps,pe))
   status_map={str(x["work_date"]):(x["status"] or "trabalhando") for x in status_rows}
-  rr=q(f"SELECT COUNT(DISTINCT rio) procedures,COUNT(DISTINCT CASE WHEN informed=1 THEN rio END) informed,COALESCE(SUM(indicted_count),0) indicted,COUNT(DISTINCT CASE WHEN indicted_count>0 THEN rio END) indicted_procedures,COALESCE(SUM(CASE WHEN telephony IS NOT NULL AND telephony<>"" THEN 1 ELSE 0 END),0) telephony,COALESCE(SUM(CASE WHEN bank IS NOT NULL AND bank<>"" THEN 1 ELSE 0 END),0) bank,COALESCE(SUM(CASE WHEN other_offices IS NOT NULL AND other_offices<>"" THEN 1 ELSE 0 END),0) other FROM records WHERE user_id={PH} AND date(created_at)>={PH} AND date(created_at)<={PH}",(u["id"],ps.isoformat(),pe.isoformat()),True)
+  rr=q(f"SELECT COUNT(DISTINCT rio) procedures,COUNT(DISTINCT CASE WHEN informed=1 THEN rio END) informed,COALESCE(SUM(indicted_count),0) indicted,COUNT(DISTINCT CASE WHEN indicted_count>0 THEN rio END) indicted_procedures,COALESCE(SUM(CASE WHEN telephony IS NOT NULL AND telephony<>'' THEN 1 ELSE 0 END),0) telephony,COALESCE(SUM(CASE WHEN bank IS NOT NULL AND bank<>'' THEN 1 ELSE 0 END),0) bank,COALESCE(SUM(CASE WHEN other_offices IS NOT NULL AND other_offices<>'' THEN 1 ELSE 0 END),0) other FROM records WHERE user_id={PH} AND date(created_at)>={PH} AND date(created_at)<={PH}",(u["id"],ps.isoformat(),pe.isoformat()),True)
   business_days=folgas=operacoes=meta=0;d=ps
   while d<=pe:
    if d.weekday()<5:
