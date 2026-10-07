@@ -275,8 +275,8 @@ def master_dashboard():
    segments.append({"name":u["name"],"count":count,"status":st})
   calendar_days.append({"date":d,"day":d.day,"weekday":d.weekday(),"segments":segments})
   d+=timedelta(days=1)
- while len(calendar_days) and calendar_days[0]["weekday"]>0:
-  calendar_days.insert(0,{"date":None,"day":None,"weekday":None,"segments":[]})
+ leading_days=first_day.weekday()
+ calendar_days=[{"date":None,"day":None,"weekday":None,"segments":[]} for _ in range(leading_days)]+calendar_days
  return render_template("master_dashboard.html",users=users,rows=rows,meta=int(setting("monthly_goal","100") or 0),total=start,today=today,tel=tel,bank=bank,other=other,byuser=byuser,daily=daily,selected_date=selected_date,informed=informed,pending=pending,points_by_user=points_by_user,points_factor=5.25,ro_filter=ro_filter,calendar_days=calendar_days,calendar_month=calendar_month,calendar_month_label=first_day.strftime("%B/%Y").capitalize(),calendar_prev=prev_month,calendar_next=next_month,calendar_users=users[:3])
 @app.route("/master/daily-goal",methods=["POST"])
 @master_required
